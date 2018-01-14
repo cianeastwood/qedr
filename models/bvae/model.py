@@ -178,7 +178,6 @@ class VAE(object):
         X_r = self.reconstruct(X)
         X_r = ((X_r+1.)*(255.99/2)).astype('int32').reshape([-1] + self.image_shape)
         save_images(X_r, os.path.join(self.dirs['samples'], 'samples_reconstructed.png'))
-        save_images(X.reshape([-1] + self.image_shape), os.path.join(self.dirs['samples'], 'samples_GT.png'))
     
     def visualise_disentanglement(self, x):
         z = self.encode([x])

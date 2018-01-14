@@ -276,10 +276,7 @@ class RegularisedGAN(object):
         X_r = self.reconstruct(X, z=fixed_z)
         X_r = ((X_r+1.)*(255.99/2)).astype('int32')
         save_images(X_r.reshape([-1] + self.image_shape),
-                    os.path.join(self.dirs['samples'], 'samples_reconstructed.png'))
-        save_images(X.reshape([-1] + self.image_shape),
-                    os.path.join(self.dirs['samples'], 'samples_GT.png'))
-        
+                    os.path.join(self.dirs['samples'], 'samples_reconstructed.png'))       
     
     def visualise_disentanglement(self, x, fixed_z_c):
         c = self.encode([x])
