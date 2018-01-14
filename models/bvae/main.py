@@ -10,9 +10,6 @@ from lib.models.distributions import Uniform, Categorical, MeanBernoulli, Gaussi
 from lib.utils import init_directories, create_directories
 from lib.models.data_managers import TeapotsDataManager
 
-#jupyter, AFS only
-#os.environ['OUTPUT_DIR'] = "/home/cian/wgan"#"/afs/inf.ed.ac.uk/user/s16/s1668298/msc/wgan"
-
 flags = tf.app.flags
 flags.DEFINE_integer("epochs", 25, "Number of epochs to train [25]")
 flags.DEFINE_integer("epochs_per_stats", 0.5, "Print/log stats every [epochs_per_stats] epochs. [0.5]")
@@ -34,14 +31,6 @@ flags.DEFINE_boolean("visualize_disentangle", True, "True for visualizing, False
 flags.DEFINE_integer("n_disentangle_samples", 10, "The number of evenly spaced samples in latent space \
                      over the interval [-3, 3] [64]")
 FLAGS = flags.FLAGS
-
-#exp_name -> no timestamp
-#checkpoints -> no timestamp, global step
-#function = 'train' -> train=True, save_codes=False (create_dirs...)
-                    
-# TO DO:
-# 1) Separate visualize functions: dis, reconstruct (without trainin)
-# 2) Init data manager - file extension (.jpg, .png, .npz)                    
 
 def main(_):
     if FLAGS.exp_name is None:

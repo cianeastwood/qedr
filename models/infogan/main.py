@@ -34,14 +34,7 @@ flags.DEFINE_boolean("visualize_reconstruct", False, "True for visualizing, Fals
 flags.DEFINE_boolean("visualize_disentangle", True, "True for visualizing, False for nothing [True]")
 flags.DEFINE_integer("n_disentangle_samples", 10, "The number of evenly spaced samples in latent space \
                      over the interval [-1, 1] [64]")
-FLAGS = flags.FLAGS
-
-#exp_name -> no timestamp
-#checkpoints -> no timestamp, global step
-#function = 'train' -> train=True, save_codes=False (create_dirs...)
-                    
-# TO DO:
-# 1) Init data manager - file extension (.jpg, .png, .npz)                    
+FLAGS = flags.FLAGS                    
 
 def main(_):
     if FLAGS.exp_name is None:

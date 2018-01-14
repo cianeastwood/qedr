@@ -4,7 +4,7 @@ from model import encode
 from lib.eval.regression import normalize
       
 if __name__ == '__main__':
-    # Sys args: [filename, m_name, n_components, gaps, train_fract, data_dir, codes_dir]
+    # Sys args: [filename, m_name, n_components, gaps, train_fract, data_dir]
     try:
         m_name = sys.argv[1]
     except Exception:

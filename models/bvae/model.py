@@ -16,20 +16,6 @@ from lib.models.nets_64x64 import NetsRetreiver
 TINY = 1e-8
 SEED = 123
 
-# CHANGED: ------------------
-# 1) Import desired arch for encoder / decoder (CREATE lib.models.nets NetworkRetreiver())
-# 2) Contruct latent spec as required...
-# 3) All dirs now contained in dirs dict
-# 4) self.seed -> SEED
-# 5) Save images not longer has to be square -> provide n_rows, n_cols
-# 6) checkpoint loading - global step
-# 7) data manager
-# 8) init_session -> train
-
-# TO DO:
-# 1) Loss: Print / tf summaries: total, reconstruct, kl
-# 2) Understanding b-vae blend capacity: https://github.com/miyosuda/disentangled_vae/blob/master/model.py
-
 class VAE(object):
     def __init__(self, session, output_dist, z_dist, arch, batch_size, image_shape, exp_name, dirs, 
                  gaps, beta, vis_reconst, vis_disent, n_disentangle_samples):
