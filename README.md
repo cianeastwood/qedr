@@ -1,3 +1,5 @@
+## Quantitative Evaluation of Disentangled Representations
+
 Implementation of our [NIPS 2017 workshop](https://sites.google.com/view/disentanglenips2017) paper: [A Framework for the Quantitative Evaluation of Disentangled Representations](https://drive.google.com/file/d/0Bwy4Nlx78QCCbnpMdGNvYmNnU2VoMzVfdkdFaHhaT3B0Rmdr/view).
 
 ## Prerequisites
