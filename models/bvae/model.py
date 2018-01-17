@@ -103,11 +103,12 @@ class VAE(object):
         sys.stdout.flush()
         return prev_step + 1
     
-    def train(self, n_iters, stats_iters, snapshot_interval):     
+    def train(self, n_iters, stats_iters, ckpt_interval):     
         self.session.run(tf.global_variables_initializer())
         
         # Fixed samples
-        fixed_x = self.session.run(tf.constant(next(self.train_gen)))
+        fixed_x, _ = next(self.train_iter)
+        fixed_x = self.session.run(tf.constant(fixed_x))
         save_images(fixed_x, os.path.join(self.dirs['samples'], 'samples_groundtruth.png'))
         
         start_iter = self.load()
@@ -116,14 +117,14 @@ class VAE(object):
         for iteration in range(start_iter, n_iters):
             start_time = time.time()
             
-            _data = next(self.train_gen)
+            _data, _ = next(self.train_iter)
             _, cost = self.session.run((self.optimizer, self.loss), feed_dict={self.x: _data, self.is_training:True})
             running_cost += cost
             
             # Print avg stats and dev set stats
             if (iteration < start_iter + 4) or iteration % stats_iters == 0:
                 t = time.time()
-                dev_data = next(self.dev_gen)
+                dev_data, _ = next(self.dev_iter)
                 dev_cost, dev_z_dist_info = self.session.run([self.loss, self.z_dist_info], 
                                                      feed_dict={self.x: dev_data, self.is_training:False})
                 
@@ -149,7 +150,7 @@ class VAE(object):
                 if np.any(np.isnan(avg_cost)):
                     raise ValueError("NaN detected!")            
             
-            if (iteration > start_iter) and iteration % (snapshot_interval) == 0:
+            if (iteration > start_iter) and iteration % (ckpt_interval) == 0:
                 self.saver.save(self.session, os.path.join(self.dirs['ckpt'], self.exp_name), global_step=iteration)  
     
     def encode(self, X, is_training=False):

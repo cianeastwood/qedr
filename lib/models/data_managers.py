@@ -3,31 +3,34 @@ import sys
 import scipy.misc
 import time
 import os
-from lib.models.data_providers import DataProvider
+from lib.models.data_providers import FlexibleDataProvider, FlexibleImageDataProvider
+from lib.models.data_providers import TeapotsDataProvider
 from lib.zero_shot import get_gap_ids
 
-class TeapotsDataManager(object):
-    def __init__(self, data_dir, batch_size, shuffle=True, gaps=True, file_ext='.npz',
-                 train_fract=0.8, dev_fract=None, seed=None):
+class DataManager(object):
+    def __init__(self, data_dir, dataset_name, batch_size, image_shape, 
+                 shuffle=True, gaps=False, file_ext='.npz', train_fract=0.8, 
+                 dev_fract=None, inf=True, supervised=False):
         
         self.data_dir = data_dir
+        self.dataset_name = dataset_name
         self.batch_size = batch_size
+        self.image_shape = image_shape
         self.shuffle = shuffle
         self.gaps = gaps
         self.file_ext = file_ext.strip()
         self.train_fract = train_fract
         self.dev_fract = dev_fract
-        seed = 123 if seed is None else seed
-        self.rng = np.random.RandomState(seed)
+        self.inf = inf
+        self.supervised = supervised
         self.gap_ids = []
-        self.inf_gen = False
-                
+        
         if self.file_ext == '.npz':
-            self.__load = self.__load_npz
+            self._data_provider = FlexibleDataProvider
+            self.__create_data_provider = self.__create_data_provider_npz
         else:
-            self.__load = self.__load_imgs
-            
-        self.__load()
+            self._data_provider = FlexibleImageDataProvider
+            self.__create_data_provider = self.__create_data_provider_imgs
     
     def __set_data_splits(self):
         if self.dev_fract is None:
@@ -35,116 +38,103 @@ class TeapotsDataManager(object):
         self.n_train = int(self.n_samples * self.train_fract)
         self.n_dev = int(self.n_samples * self.dev_fract)
         self.n_test = self.n_samples - (self.n_train + self.n_dev)
-        print("Train set: {0}\nDev set: {1}\nTest set: {2}".format(self.n_train, self.n_dev, self.n_test))
+        print("Train set: {0}\nDev set: {1}\nTest set: {2}".format(
+              self.n_train, self.n_dev, self.n_test))
                                      
-    def __make_generator(self, imgs_dir, start_idx, end_idx):
-        epoch_count = [0]
-        def get_epoch():
-            epoch_count[0] += 1
-            if start_idx == 0: #Train 
-                print("Epoch:{0}".format(epoch_count[0]))
-            
-            images = np.zeros((self.batch_size, 3, 64, 64), dtype='int32')
-            files = list(range(start_idx, end_idx))
-            if list(self.gap_ids):  #is not None
-                files = [x for x in files if x not in self.gap_ids]
-
-            if self.shuffle:
-                self.rng.shuffle(files)
-
-            for n, i in enumerate(files, 1): #start at 1, then % batch size == 0
-                image = scipy.misc.imread(os.path.join(imgs_dir, ("im{0}" + self.file_ext).format(i)))
-                images[n % self.batch_size] = image.transpose(2,0,1)
-                if n > 0 and n % self.batch_size == 0:
-                    yield (images,)
-        
-        return get_epoch
-
-    def __load_imgs(self):
+    def __split_data(self, data, start_idx, end_idx):
+        return np.delete(data[start_idx:end_idx], self.gap_ids, 0)
+    
+    def __create_data_provider_imgs(self):
         img_dir = os.path.join(self.data_dir, 'images/')
         self.n_samples = len([name for name in os.listdir(img_dir)])
+        img_files = np.array(list(range(0, self.n_samples))) #file ids [0, n_samples-1]
         self.__set_data_splits()
+        
         if self.gaps:
             self.gap_ids = np.load(os.path.join(self.data_dir, 'gap_ids.npy'))
-        self.train_gen = self.__make_generator(img_dir, 0, self.n_train)
-        self.dev_gen   = self.__make_generator(img_dir, self.n_train, self.n_train + self.n_dev)
-        self.test_gen  = self.__make_generator(img_dir, self.n_train + self.n_dev, self.n_train + self.n_dev + self.n_test)
-    
-    def __load_npz(self):
-        # Load dataset
-        data_zip = np.load(os.path.join(self.data_dir, "teapots.npz"))
-        images = data_zip['images']
-        gts = data_zip['gts']
         
-        # Train, val, test splits
+        train_img_ids = self.__split_data(img_files, 0, 
+                                          self.n_train) #file ids
+        dev_img_ids  = self.__split_data(img_files, self.n_train, 
+                                          self.n_train + self.n_dev)
+        test_img_ids = self.__split_data(img_files, self.n_train + self.n_dev, 
+                                          self.n_train + self.n_dev + self.n_test)
+        
+        if self.supervised:
+            gts = np.load(os.path.join(self.data_dir, self.dataset_name + ".npz"))['gts']
+            train_gts = self.__split_data(gts, 0, 
+                                          self.n_train)
+            dev_gts   = self.__split_data(gts, self.n_train, 
+                                          self.n_train + self.n_dev)
+            test_gts  = self.__split_data(gts, self.n_train + self.n_dev, 
+                                          self.n_train + self.n_dev + self.n_test)
+        else:
+            train_gts, dev_gts, test_gts = None, None, None
+        
+        self.train = self._data_provider(img_dir, train_img_ids, train_gts, 
+                                        self.batch_size, self.image_shape,
+                                        self.file_ext, self.inf, self.shuffle, 
+                                        print_epoch=True)
+        self.dev   = self._data_provider(img_dir, dev_img_ids, dev_gts, 
+                                        self.batch_size, self.image_shape,
+                                        self.file_ext, self.inf, self.shuffle)
+        self.test  = self._data_provider(img_dir, test_img_ids, test_gts, 
+                                        self.batch_size, self.image_shape,
+                                        self.file_ext, self.inf, self.shuffle)
+    
+    def __create_data_provider_npz(self):
+        data_zip = np.load(os.path.join(self.data_dir, self.dataset_name + ".npz"))
+        images = data_zip['images']
         self.n_samples = len(images)
         self.__set_data_splits()
         
         if self.gaps:
-            self.gap_ids = get_gap_ids(gts)
-
-        def split_data(start, end):
-            imgs = np.delete(images[start:end], self.gap_ids, 0)
-            gts = np.delete(gts[start:end], self.gap_ids, 0)
-            return imgs, gts
+            self.gap_ids = np.load(os.path.join(self.data_dir, 'gap_ids.npy'))
               
-        train_imgs, train_gts = split_data(0, self.n_train)
-        dev_imgs, dev_gts = split_data(self.n_train, self.n_train + self.n_dev)
-        test_imgs, test_gts = split_data(self.n_train + self.n_dev, self.n_train + self.n_dev + self.n_test)
+        train_imgs = self.__split_data(images, 0, 
+                                       self.n_train)
+        dev_imgs   = self.__split_data(images, self.n_train, 
+                                       self.n_train + self.n_dev)
+        test_imgs  = self.__split_data(images, self.n_train + self.n_dev, 
+                                       self.n_train + self.n_dev + self.n_test)
         
-        self.train_gen = DataProvider(train_imgs, train_gts, self.batch_size, shuffle_order=self.shuffle, rng=self.rng)
-        self.dev_gen = DataProvider(dev_imgs, dev_gts, self.batch_size, shuffle_order=self.shuffle, rng=self.rng)
-        self.test_gen = DataProvider(test_imgs, test_gts, self.batch_size, shuffle_order=self.shuffle, rng=self.rng)
-    
-    def inf_generators(self):
-        def inf_gen(gen):
-            while True:
-                for (images,) in gen():
-                    yield images
-        self.train_gen = inf_gen(self.train_gen)
-        self.dev_gen = inf_gen(self.dev_gen)
-        self.test_gen = inf_gen(self.test_gen)
-        self.inf_gen = True
+        if self.supervised:
+            gts = data_zip['gts']
+            train_gts  = self.__split_data(gts, 0, 
+                                           self.n_train)
+            dev_gts    = self.__split_data(gts, self.n_train, 
+                                           self.n_train + self.n_dev)
+            test_gts   = self.__split_data(gts, self.n_train + self.n_dev, 
+                                           self.n_train + self.n_dev + self.n_test)
+        else:
+            train_gts, dev_gts, test_gts = None, None, None
+        
+        self.train = self._data_provider(train_imgs, train_gts, self.batch_size, 
+                                          inf=self.inf, shuffle_order=self.shuffle, 
+                                          print_epoch=True)
+        self.dev   = self._data_provider(dev_imgs, dev_gts, self.batch_size,
+                                          inf=self.inf, shuffle_order=self.shuffle)
+        self.test  = self._data_provider(test_imgs, test_gts, self.batch_size,
+                                          inf=self.inf, shuffle_order=self.shuffle)
                                        
-    def get_generators(self):
-        return self.train_gen, self.dev_gen, self.test_gen
+    def get_iterators(self):
+        self.__create_data_provider()
+        return self.train, self.dev, self.test
     
     def set_divisor_batch_size(self):
         '''Ensure batch size evenly divides into n_samples.'''
         while self.n_samples % self.batch_size != 0:
             self.batch_size -= 1
-    
-    def __get_gen_data(self, g):
-        samples = []
-        if self.inf_gen:
-            for n, batch in enumerate(g):
-                samples.append(batch)
-                if n % self.n_samples == 0:
-                    break
-        else:
-            for (batch,) in g():
-                samples.append(batch)
-        np.vstack(samples)
+
+            
+class TeapotsDataManager(DataManager):
+    def __init__(self, data_dir, batch_size, image_shape, shuffle=True, 
+                 gaps=True, file_ext='.npz', train_fract=0.8, 
+                 dev_fract=None, inf=True, supervised=False):
         
-    def get_train_data(self):
-        return self.__get_gen_data(self.train_gen)
-    
-    def get_dev_data(self):
-        return self.__get_gen_data(self.dev_gen)
-    
-    def get_test_data(self):
-        return self.__get_gen_data(self.test_gen)
-    
-    def get_all_samples(self):
-        samples = []
-        if self.train_fract  == 1.:
-            return self.__get_gen_data(self.train_gen)
+        super(TeapotsDataManager, self).__init__(data_dir, "teapots", 
+              batch_size, image_shape, shuffle, gaps, file_ext,
+              train_fract, dev_fract, inf, supervised)
         
-        tr_f = self.train_fract
-        dev_f = self.dev_fract
-        test_f = 1. - (self.train_fract + self.dev_fract)
-        for fr, g in zip([tr_f, dev_f, test_f], [self.train_gen, self.dev_gen, self.test_gen]):
-            if fract <= 0.:
-                break
-            samples.append(self.__get_gen_data(g))
-        return np.vstack(samples)
+        if self.file_ext == '.npz':
+            self._data_provider = TeapotsDataProvider #transpose image batch in provider

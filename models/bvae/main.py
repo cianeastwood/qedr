@@ -12,8 +12,8 @@ from lib.models.data_managers import TeapotsDataManager
 
 flags = tf.app.flags
 flags.DEFINE_integer("epochs", 25, "Number of epochs to train [25]")
-flags.DEFINE_integer("epochs_per_stats", 0.5, "Print/log stats every [epochs_per_stats] epochs. [0.5]")
-flags.DEFINE_integer("snapshot_interval", 0.5, "Save checkpoint every [snapshot_interval] epochs. [0.5]")
+flags.DEFINE_integer("stats_interval", 0.5, "Print/log stats every [stats_interval] epochs. [0.5]")
+flags.DEFINE_integer("ckpt_interval", 0.5, "Save checkpoint every [ckpt_interval] epochs. [0.5]")
 flags.DEFINE_integer("latent_dim", 10, "Number of latent variables [10]")
 flags.DEFINE_float("beta", 1., "D_KL term weighting [1.]")
 flags.DEFINE_integer("batch_size", 64, "The size of training batches [64]")
@@ -67,24 +67,24 @@ def main(_):
     )
 
     if FLAGS.train:
-        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size, shuffle=True, gaps=FLAGS.gaps, 
-                                          file_ext=FLAGS.file_ext, train_fract=0.8)
-        data_manager.inf_generators()
-        vae.train_gen, vae.dev_gen, vae.test_gen = data_manager.get_generators()
+        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size, image_shape, 
+                                          shuffle=True, gaps=FLAGS.gaps, file_ext=FLAGS.file_ext, 
+                                          train_fract=0.8, inf=True)
+        vae.train_iter, vae.dev_iter, vae.test_iter = data_manager.get_iterators()
         
         n_iters_per_epoch = data_manager.n_train // data_manager.batch_size
-        stats_iters = int(FLAGS.epochs_per_stats * n_iters_per_epoch)
-        snapshot_interval = int(FLAGS.snapshot_interval * n_iters_per_epoch)
+        FLAGS.stats_interval = int(FLAGS.stats_interval * n_iters_per_epoch)
+        FLAGS.ckpt_interval = int(FLAGS.ckpt_interval * n_iters_per_epoch)
         n_iters = int(FLAGS.epochs * n_iters_per_epoch)
         
-        vae.train(n_iters, stats_iters, snapshot_interval)
+        vae.train(n_iters, FLAGS.stats_interval, FLAGS.ckpt_interval)
 
     if FLAGS.save_codes:
         b_size = 500 #large batch, forward prop only
-        data_manager = TeapotsDataManager(dirs['data'], b_size, False, 
-                                          False, FLAGS.file_ext, 1.)
+        data_manager = TeapotsDataManager(dirs['data'], b_size, shuffle=False, gaps=False,
+                                          file_ext=FLAGS.file_ext, train_fract=1., inf=False)
         data_manager.set_divisor_batch_size()        
-        vae.train_gen, vae.dev_gen, vae.test_gen = data_manager.get_generators()
+        vae.train_iter, vae.dev_iter, vae.test_iter = data_manager.get_iterators()
         
         vae.session.run(tf.global_variables_initializer())
         
@@ -92,7 +92,7 @@ def main(_):
         assert saved_step > 1, "A trained model is needed to encode the data!"
         
         codes = []
-        for batch_num, (img_batch,) in enumerate(vae.train_gen()):
+        for batch_num, (img_batch, _) in enumerate(vae.train_iter):
             code = vae.encode(img_batch) #[batch_size, reg_latent_dim]
             codes.append(code)
             if batch_num < 5 or batch_num % 100 == 0:
