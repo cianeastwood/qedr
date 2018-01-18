@@ -1,17 +1,12 @@
 import os, sys
-sys.path.append(os.getcwd())
-
 import time
-import functools
 import re
 import numpy as np
 import tensorflow as tf
-from scipy.misc import imsave
 
 from lib.models import params_with_name
-from lib.models import plot
 from lib.models.save_images import save_images
-from lib.models.distributions import Bernoulli, Gaussian, Categorical, Product
+from lib.models.distributions import Bernoulli, Gaussian, Product
 from lib.models.nets_64x64 import NetsRetreiver
 
 TINY = 1e-8
@@ -53,11 +48,11 @@ class RegularisedGAN(object):
         self.is_training = tf.placeholder(tf.bool)
         self.x = tf.placeholder(tf.int32, shape=[None] + list(self.image_shape))
         
-        # Normalize + reshape 'real' input data
-        real_x = 2*((tf.cast(self.x, tf.float32)/255.)-.5) # ---> DATA MANAGER (norm_x)
+        # Normalize + reshape 'real' input data (-> data_provider)
+        real_x = 2*((tf.cast(self.x, tf.float32)/255.)-.5)
         real_x = tf.reshape(real_x, [-1, self.output_dist.dim])
         
-        # Sample prior z,c
+        # Sample prior (z,c)
         self.z = tf.placeholder_with_default(self.z_dist.sample_prior(self.batch_size), [None, self.z_dist.dim])
         self.c = tf.placeholder_with_default(self.c_dist.sample_prior(self.batch_size), [None, self.c_dist.dim])
         self.z_c = tf.concat([self.z,self.c], axis=1)
@@ -198,11 +193,12 @@ class RegularisedGAN(object):
     def train(self, n_iters, stats_iters, snapshot_interval):
         self.session.run(tf.global_variables_initializer())
         
-        # Save GT samples
-        fixed_x = self.session.run(tf.constant(next(self.train_gen)))
+        # Fixed GT samples - save
+        fixed_x, _ = next(self.train_iter)
+        fixed_x = self.session.run(tf.constant(fixed_x))
         save_images(fixed_x, os.path.join(self.dirs['samples'], 'samples_groundtruth.png'))
         
-        # Fixed prior sample for generating samples .astype('float32')
+        # Fixed prior sample, for generating samples
         fixed_z_c = self.session.run(self.latent_dist.sample_prior(self.batch_size))
         
         log_vars = [x for _, x in self.log_vars]
@@ -226,7 +222,7 @@ class RegularisedGAN(object):
                 disc_iters = 1
             
             for i in range(disc_iters):
-                _data = next(self.train_gen)
+                _data, _ = next(self.train_iter)
                 log_vals = self.session.run([self.disc_opt] + log_vars,
                                             feed_dict={self.x: _data, self.is_training:True})[1:]         
             
@@ -235,7 +231,7 @@ class RegularisedGAN(object):
             # Print avg stats and dev set stats
             if (iteration < start_iter + 4) or iteration % stats_iters == 0:
                 t = time.time()
-                dev_data = next(self.dev_gen)
+                dev_data, _ = next(self.dev_gen)
                 dev_log_vals = self.session.run(log_vars + [self.q_c_given_x_real_dist_info],
                                                  feed_dict={self.x: dev_data, self.is_training:False})
                 dev_c_dist_info = dev_log_vals[-1]
@@ -268,7 +264,7 @@ class RegularisedGAN(object):
                 if np.any(np.isnan(avg_log_vals)):
                     raise ValueError("NaN detected!")            
             
-            if (iteration > start_iter) and iteration % (snapshot_interval) == 0:
+            if (iteration > start_iter) and iteration % (ckpt_interval) == 0:
                 self.saver.save(self.session, os.path.join(self.dirs['ckpt'], self.exp_name), global_step=iteration)  
     
     def visualise_reconstruction(self, X, fixed_z_c):

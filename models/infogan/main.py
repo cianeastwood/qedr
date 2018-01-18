@@ -11,8 +11,8 @@ from lib.models.data_managers import TeapotsDataManager
 
 flags = tf.app.flags
 flags.DEFINE_integer("epochs", 25, "Number of epochs to train [25]")
-flags.DEFINE_integer("epochs_per_stats", 0.5, "Print/log stats every [epochs_per_stats] epochs. [0.5]")
-flags.DEFINE_integer("snapshot_interval", 0.5, "Save checkpoint every [snapshot_interval] epochs. [0.5]")
+flags.DEFINE_integer("stats_interval", 0.5, "Print/log stats every [stats_interval] epochs. [0.5]")
+flags.DEFINE_integer("ckpt_interval", 0.5, "Save checkpoint every [ckpt_interval] epochs. [0.5]")
 flags.DEFINE_integer("latent_codes", 6, "Number of *regularised* latent variables [6]")
 flags.DEFINE_integer("noise_variables", 128, "Number of *unregularised* latent variables [128]")
 flags.DEFINE_boolean("fix_std", True, "Fix the standard deviation of the regularised latent codes [True]")
@@ -79,34 +79,35 @@ def main(_):
     )
 
     if FLAGS.train:
-        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size, shuffle=True, gaps=FLAGS.gaps, 
-                                          file_ext=FLAGS.file_ext, train_fract=0.8)
-        data_manager.inf_generators()
-        gan.train_gen, gan.dev_gen, gan.test_gen = data_manager.get_generators()
+        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size, 
+                              image_shape, shuffle=True, gaps=FLAGS.gaps, 
+                              file_ext=FLAGS.file_ext, train_fract=0.8, 
+                              inf=True)
+        gan.train_iter, gan.dev_iter, gan.test_iter = data_manager.get_iterators()
         
         n_iters_per_epoch = data_manager.n_train // data_manager.batch_size
         if FLAGS.mode == 'wgan-gp':
             n_iters_per_epoch //= FLAGS.critic_iters
         
-        stats_iters = int(FLAGS.epochs_per_stats * n_iters_per_epoch)
-        snapshot_interval = int(FLAGS.snapshot_interval * n_iters_per_epoch)
+        FLAGS.stats_interval = int(FLAGS.stats_interval * n_iters_per_epoch)
+        FLAGS.ckpt_interval = int(FLAGS.ckpt_interval * n_iters_per_epoch)
         n_iters = int(FLAGS.epochs * n_iters_per_epoch)
-
-        gan.train(n_iters, stats_iters, snapshot_interval)
+        
+        gan.train(n_iters, FLAGS.stats_interval, FLAGS.ckpt_interval)
 
     if FLAGS.save_codes:
         b_size = 500 #large batch, forward prop only
-        data_manager = TeapotsDataManager(dirs['data'], b_size, False, 
-                                          False, FLAGS.file_ext, 1.)
-        data_manager.set_divisor_batch_size()
-        gan.train_gen, gan.dev_gen, gan.test_gen = data_manager.get_generators()
+        data_manager = TeapotsDataManager(dirs['data'], b_size, shuffle=False, gaps=False,
+                                          file_ext=FLAGS.file_ext, train_fract=1., inf=False)
+        data_manager.set_divisor_batch_size()        
+        gan.train_iter, gan.dev_iter, gan.test_iter = data_manager.get_iterators()
         
         gan.session.run(tf.global_variables_initializer())
         saved_step = gan.load()
         assert saved_step > 1, "A trained model is needed to encode the data!"
         
         codes = []
-        for batch_num, (img_batch,) in enumerate(gan.train_gen()):
+        for batch_num, (img_batch, _) in enumerate(gan.train_gen()):
             code = gan.encode(img_batch) #[batch_size, reg_latent_dim]
             codes.append(code)
             if batch_num < 5 or batch_num % 100 == 0:

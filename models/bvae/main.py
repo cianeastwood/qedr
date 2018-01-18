@@ -1,12 +1,11 @@
 import os
 import numpy as np
-import datetime, dateutil.tz
 import tensorflow as tf
 from operator import mul
 from functools import reduce
 
 from model import VAE
-from lib.models.distributions import Uniform, Categorical, MeanBernoulli, Gaussian
+from lib.models.distributions import Gaussian
 from lib.utils import init_directories, create_directories
 from lib.models.data_managers import TeapotsDataManager
 
@@ -67,9 +66,10 @@ def main(_):
     )
 
     if FLAGS.train:
-        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size, image_shape, 
-                                          shuffle=True, gaps=FLAGS.gaps, file_ext=FLAGS.file_ext, 
-                                          train_fract=0.8, inf=True)
+        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size, 
+                              image_shape, shuffle=True, gaps=FLAGS.gaps, 
+                              file_ext=FLAGS.file_ext, train_fract=0.8, 
+                              inf=True)
         vae.train_iter, vae.dev_iter, vae.test_iter = data_manager.get_iterators()
         
         n_iters_per_epoch = data_manager.n_train // data_manager.batch_size
@@ -87,7 +87,6 @@ def main(_):
         vae.train_iter, vae.dev_iter, vae.test_iter = data_manager.get_iterators()
         
         vae.session.run(tf.global_variables_initializer())
-        
         saved_step = vae.load()
         assert saved_step > 1, "A trained model is needed to encode the data!"
         

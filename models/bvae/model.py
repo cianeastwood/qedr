@@ -1,16 +1,12 @@
 import os, sys
-sys.path.append(os.getcwd())
-
 import time
-import functools
 import re
 import numpy as np
 import tensorflow as tf
-from scipy.misc import imsave
 
 from lib.models import params_with_name
 from lib.models.save_images import save_images
-from lib.models.distributions import Bernoulli, Gaussian, Categorical, Product
+from lib.models.distributions import Bernoulli, Gaussian, Product
 from lib.models.nets_64x64 import NetsRetreiver
 
 TINY = 1e-8
@@ -39,9 +35,6 @@ class VAE(object):
         
         self.__build_graph()
 
-#     def safe_exp(self, x):
-#         return tf.exp(tf.clip_by_value(x, 1e-40, 88))
-
     def __build_graph(self):
         tf.set_random_seed(SEED)
         np.random.seed(SEED)
@@ -50,12 +43,15 @@ class VAE(object):
         self.x = tf.placeholder(tf.int32, shape=[None] + list(self.image_shape))
         
         self.Encoder, self.Decoder = NetsRetreiver(self.arch)        
-        norm_x = 2*((tf.cast(self.x, tf.float32)/255.)-.5)
+        norm_x = 2*((tf.cast(self.x, tf.float32)/255.)-.5) # (-> data_provider)
         
         z_dist_params = self.Encoder('Encoder', norm_x, self.image_shape[0], self.z_dist.dist_flat_dim,
                                           self.is_training)
         self.z_dist_info = self.z_dist.activate_dist(z_dist_params)
-        self.z = self.z_dist.sample(self.z_dist_info)
+        if isinstance(self.z_dist, Gaussian):
+            self.z = self.z_dist.sample(self.z_dist_info)
+        else:
+            raise NotImplementedError #reparam trick for other latent dists
         
         x_out_logit = self.Decoder('Decoder', self.z, self.image_shape[0], self.is_training)
         if isinstance(self.output_dist, Gaussian):
@@ -106,7 +102,7 @@ class VAE(object):
     def train(self, n_iters, stats_iters, ckpt_interval):     
         self.session.run(tf.global_variables_initializer())
         
-        # Fixed samples
+        # Fixed GT samples - save
         fixed_x, _ = next(self.train_iter)
         fixed_x = self.session.run(tf.constant(fixed_x))
         save_images(fixed_x, os.path.join(self.dirs['samples'], 'samples_groundtruth.png'))
@@ -198,7 +194,7 @@ class VAE(object):
                             z_new[0][i] = z[i]
                     rimgs.append(self.generate(z_mu=z_new))
         else:
-            raise NotImplementedError
+            raise NotImplementedError 
 
         rimgs = np.vstack(rimgs).reshape([-1] + self.image_shape)
         rimgs = ((rimgs+1.)*(255.99/2)).astype('int32')
