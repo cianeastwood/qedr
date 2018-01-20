@@ -1,5 +1,6 @@
 import numpy as np
 import os, sys
+from operator import mul
 from sklearn.decomposition import PCA
 from lib.eval.regression import normalize
       
@@ -27,32 +28,40 @@ if __name__ == '__main__':
     try:
         data_dir = str(sys.argv[4])
     except Exception:
-        data_dir = '/disk/scratch1/cian/data/'#'../../data'
+        data_dir = '../../data/'
     print("Loading data from {0}.".format(data_dir))
         
     # Load data
-    data = np.load(os.path.join(data_dir, 'teapots.npz'))['images']
+    def load_data():
+        data = np.load(os.path.join(data_dir, 'teapots.npz'))['images']
+        if len(data.shape) > 2:
+	    shape = reduce(mul, data.shape[1:], 1)
+	    data = data.reshape([-1, shape])
+        return data
     
-    # Split data
+    data = load_data()
+	
+    # Get training data
     n_train = int(len(data) * train_fract)
-    train = data[:n_train]        
+    data = data[:n_train] #reuse var to save memory        
     if gaps:
         gap_ids = np.load(os.path.join(data_dir, 'gap_ids.npy'))
-        train = np.delete(train, gap_ids, 0)
+        data = np.delete(data, gap_ids, 0)
     
-    # Normalize data
-    train, m, s, _ = normalize(train)
-    data, _, _, _   = normalize(data, m, s)
-    
-    # Encode
+    # Fit model to normalized training data
+    data, m, s, fs = normalize(data)
     rng = np.random.RandomState(123)
     model = PCA(n_components=n_components, random_state=rng)
-    model.fit(train)
+    model.fit(data)
+
+    # Encode all (normalized) data
+    data = load_data()
+    data, _, _, _   = normalize(data, m, s, fs)
     data = model.transform(data) # codes, reuse var
     expl_var = np.array(np.sum(model.explained_variance_ratio_))
 
     # Save results   
     codes_dir = os.path.join(data_dir, 'codes/')
-    filename = os.path.join(codes_dir, "pca_{0}_{1}v_new_T".format(gaps, n_components))
-    np.savez_compressed(filename, codes=data, expl_var=expl_var)
-    print("{0} values saved to {1}.".format(m_name, filename))
+    f_name = os.path.join(codes_dir, "pca_{0}_{1}v".format(gaps, n_components))
+    np.savez_compressed(f_name, codes=data, expl_var=expl_var)
+    print("PCA values saved to {1}.".format(f_name))
