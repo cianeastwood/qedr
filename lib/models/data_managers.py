@@ -23,14 +23,23 @@ class DataManager(object):
         self.dev_fract = dev_fract
         self.inf = inf
         self.supervised = supervised
-        self.gap_ids = []
         
         if self.file_ext == '.npz':
             self._data_provider = FlexibleDataProvider
             self.__create_data_provider = self.__create_data_provider_npz
+            imgs = np.load(os.path.join(self.data_dir, self.dataset_name + ".npz"))['images']
+            self.n_samples = len(imgs)
+
         else:
             self._data_provider = FlexibleImageDataProvider
             self.__create_data_provider = self.__create_data_provider_imgs
+            self.img_dir = os.path.join(self.data_dir, 'images/')
+            self.n_samples = len([name for name in os.listdir(self.img_dir)])
+            imgs = np.array(list(range(0, self.n_samples))) #image file ids [0, n_samples-1]
+
+        self.__set_data_splits()
+        imgs, gts = self.__get_datasets(imgs)
+        self.__create_data_provider(imgs, gts)
     
     def __set_data_splits(self):
         if self.dev_fract is None:
@@ -41,74 +50,48 @@ class DataManager(object):
         print("Train set: {0}\nDev set: {1}\nTest set: {2}".format(
               self.n_train, self.n_dev, self.n_test))
                                      
-    def __split_data(self, data, start_idx, end_idx):
-        return np.delete(data[start_idx:end_idx], self.gap_ids, 0)
-    
-    def __create_data_provider_imgs(self):
-        img_dir = os.path.join(self.data_dir, 'images/')
-        self.n_samples = len([name for name in os.listdir(img_dir)])
-        img_files = np.array(list(range(0, self.n_samples))) #file ids [0, n_samples-1]
-        self.__set_data_splits()
-        
-        if self.gaps:
-            self.gap_ids = np.load(os.path.join(self.data_dir, 'gap_ids.npy'))
-        
-        train_img_ids = self.__split_data(img_files, 0, 
-                                          self.n_train) #file ids
-        dev_img_ids  = self.__split_data(img_files, self.n_train, 
-                                          self.n_train + self.n_dev)
-        test_img_ids = self.__split_data(img_files, self.n_train + self.n_dev, 
-                                          self.n_train + self.n_dev + self.n_test)
-        
-        if self.supervised:
-            gts = np.load(os.path.join(self.data_dir, self.dataset_name + ".npz"))['gts']
-            train_gts = self.__split_data(gts, 0, 
-                                          self.n_train)
-            dev_gts   = self.__split_data(gts, self.n_train, 
-                                          self.n_train + self.n_dev)
-            test_gts  = self.__split_data(gts, self.n_train + self.n_dev, 
-                                          self.n_train + self.n_dev + self.n_test)
-        else:
-            train_gts, dev_gts, test_gts = None, None, None
-        
-        self.train = self._data_provider(img_dir, train_img_ids, train_gts, 
-                                        self.batch_size, self.image_shape,
-                                        self.file_ext, self.inf, self.shuffle, 
-                                        print_epoch=True)
-        self.dev   = self._data_provider(img_dir, dev_img_ids, dev_gts, 
-                                        self.batch_size, self.image_shape,
-                                        self.file_ext, self.inf, self.shuffle)
-        self.test  = self._data_provider(img_dir, test_img_ids, test_gts, 
-                                        self.batch_size, self.image_shape,
-                                        self.file_ext, self.inf, self.shuffle)
-    
-    def __create_data_provider_npz(self):
-        data_zip = np.load(os.path.join(self.data_dir, self.dataset_name + ".npz"))
-        images = data_zip['images']
-        self.n_samples = len(images)
-        self.__set_data_splits()
-        
-        if self.gaps:
-            self.gap_ids = np.load(os.path.join(self.data_dir, 'gap_ids.npy'))
+    def __split_data(self, data, start_idx, end_idx, gap_ids):
+        return np.delete(data[start_idx:end_idx], gap_ids, 0)
+
+    def __get_datasets(self, imgs):
+        gap_ids = np.load(os.path.join(self.data_dir, 'gap_ids.npy')) if self.gaps else []
               
-        train_imgs = self.__split_data(images, 0, 
-                                       self.n_train)
-        dev_imgs   = self.__split_data(images, self.n_train, 
-                                       self.n_train + self.n_dev)
-        test_imgs  = self.__split_data(images, self.n_train + self.n_dev, 
-                                       self.n_train + self.n_dev + self.n_test)
+        train_imgs = self.__split_data(imgs, 0, 
+                                       self.n_train, gap_ids)
+        dev_imgs   = self.__split_data(imgs, self.n_train, 
+                                       self.n_train + self.n_dev, gap_ids)
+        test_imgs  = self.__split_data(imgs, self.n_train + self.n_dev, 
+                                       self.n_train + self.n_dev + self.n_test, gap_ids)
         
         if self.supervised:
-            gts = data_zip['gts']
-            train_gts  = self.__split_data(gts, 0, 
+            gts = np.load(os.path.join(self.data_dir, self.dataset_name + ".npz"))['gts'] #targets
+            train_gts  = self.__split_data(self.gts, 0, 
                                            self.n_train)
-            dev_gts    = self.__split_data(gts, self.n_train, 
+            dev_gts    = self.__split_data(self.gts, self.n_train, 
                                            self.n_train + self.n_dev)
-            test_gts   = self.__split_data(gts, self.n_train + self.n_dev, 
+            test_gts   = self.__split_data(self.gts, self.n_train + self.n_dev, 
                                            self.n_train + self.n_dev + self.n_test)
         else:
             train_gts, dev_gts, test_gts = None, None, None
-        
+        return (train_imgs, dev_imgs, test_imgs), (train_gts, dev_gts, test_gts)
+   
+    def __create_data_provider_imgs(self, img_ids, gts):
+        train_img_ids, dev_img_ids, test_img_ids = img_ids
+        train_gts, dev_gts, test_gts = gts
+        self.train = self._data_provider(self.img_dir, train_img_ids, train_gts, 
+                                        self.batch_size, self.image_shape,
+                                        self.file_ext, self.inf, self.shuffle, 
+                                        print_epoch=True)
+        self.dev   = self._data_provider(self.img_dir, dev_img_ids, dev_gts, 
+                                        self.batch_size, self.image_shape,
+                                        self.file_ext, self.inf, self.shuffle)
+        self.test  = self._data_provider(self.img_dir, test_img_ids, test_gts, 
+                                        self.batch_size, self.image_shape,
+                                        self.file_ext, self.inf, self.shuffle)
+    
+    def __create_data_provider_npz(self, imgs, gts):
+        train_imgs, dev_imgs, test_imgs = imgs
+        train_gts, dev_gts, test_gts = gts               
         self.train = self._data_provider(train_imgs, train_gts, self.batch_size, 
                                           inf=self.inf, shuffle_order=self.shuffle, 
                                           print_epoch=True)
@@ -118,7 +101,6 @@ class DataManager(object):
                                           inf=self.inf, shuffle_order=self.shuffle)
                                        
     def get_iterators(self):
-        self.__create_data_provider()
         return self.train, self.dev, self.test
     
     def set_divisor_batch_size(self):

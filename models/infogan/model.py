@@ -120,8 +120,10 @@ class RegularisedGAN(object):
         cross_entropy = tf.reduce_mean(-log_q_c_given_x)
         entropy = tf.reduce_mean(-log_q_c)
         self.mi_est = entropy - cross_entropy
-#         self.mi_est = -tf.reduce_mean(self.c_dist.kl(self.c_dist.prior_dist_info(tf.shape(self.c)[0]), 
-#                                      q_c_given_x_dist_info)) #E_z[kl_prior_post]
+        #self.mi_est = -tf.reduce_mean(self.c_dist.kl(self.c_dist.prior_dist_info(tf.shape(self.c)[0]), 
+        #                              q_c_given_x_dist_info)) #kl_prior_post
+        #self.mi_est = -tf.reduce_mean(self.c_dist.kl(q_c_given_x_dist_info, #kl_post_prior
+        #                              self.c_dist.prior_dist_info(tf.shape(self.c)[0])))
         
         self.disc_cost -= self.mi_coeff * self.mi_est
         self.gen_cost -= self.mi_coeff * self.mi_est
@@ -190,7 +192,7 @@ class RegularisedGAN(object):
         return self.session.run(self.fake_x, 
                                 feed_dict={self.z_c: z_c, self.is_training: is_training})
     
-    def train(self, n_iters, stats_iters, snapshot_interval):
+    def train(self, n_iters, stats_iters, ckpt_interval):
         self.session.run(tf.global_variables_initializer())
         
         # Fixed GT samples - save
@@ -231,7 +233,7 @@ class RegularisedGAN(object):
             # Print avg stats and dev set stats
             if (iteration < start_iter + 4) or iteration % stats_iters == 0:
                 t = time.time()
-                dev_data, _ = next(self.dev_gen)
+                dev_data, _ = next(self.dev_iter)
                 dev_log_vals = self.session.run(log_vars + [self.q_c_given_x_real_dist_info],
                                                  feed_dict={self.x: dev_data, self.is_training:False})
                 dev_c_dist_info = dev_log_vals[-1]

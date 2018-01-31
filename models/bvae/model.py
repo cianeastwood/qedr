@@ -195,8 +195,8 @@ class VAE(object):
                     rimgs.append(self.generate(z_mu=z_new))
         else:
             raise NotImplementedError 
-
-        rimgs = np.vstack(rimgs).reshape([-1] + self.image_shape)
+        rimgs = np.vstack(rimgs).reshape([n_zs, self.n_disentangle_samples, -1]).transpose(1,0,2)
+        rimgs = rimgs.reshape([-1] + self.image_shape)
         rimgs = ((rimgs+1.)*(255.99/2)).astype('int32')
         save_images(rimgs, os.path.join(self.dirs['samples'], 'disentanglement.png'),
-                    n_rows=n_zs, n_cols=self.n_disentangle_samples)
+                    n_cols=n_zs, n_rows=self.n_disentangle_samples)

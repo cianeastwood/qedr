@@ -81,7 +81,7 @@ def main(_):
 
     if FLAGS.save_codes:
         b_size = 500 #large batch, forward prop only
-        data_manager = TeapotsDataManager(dirs['data'], b_size, shuffle=False, gaps=False,
+        data_manager = TeapotsDataManager(dirs['data'], b_size, image_shape, shuffle=False, gaps=False,
                                           file_ext=FLAGS.file_ext, train_fract=1., inf=False)
         data_manager.set_divisor_batch_size()        
         vae.train_iter, vae.dev_iter, vae.test_iter = data_manager.get_iterators()
