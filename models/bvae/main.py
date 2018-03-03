@@ -10,19 +10,19 @@ from lib.utils import init_directories, create_directories
 from lib.models.data_managers import TeapotsDataManager
 
 flags = tf.app.flags
-flags.DEFINE_integer("epochs", 25, "Number of epochs to train [25]")
-flags.DEFINE_integer("stats_interval", 0.5, "Print/log stats every [stats_interval] epochs. [0.5]")
-flags.DEFINE_integer("ckpt_interval", 0.5, "Save checkpoint every [ckpt_interval] epochs. [0.5]")
+flags.DEFINE_integer("epochs", 50, "Number of epochs to train [25]")
+flags.DEFINE_integer("stats_interval", 1., "Print/log stats every [stats_interval] epochs. [1.0]")
+flags.DEFINE_integer("ckpt_interval", 10, "Save checkpoint every [ckpt_interval] epochs. [10]")
 flags.DEFINE_integer("latent_dim", 10, "Number of latent variables [10]")
 flags.DEFINE_float("beta", 1., "D_KL term weighting [1.]")
 flags.DEFINE_integer("batch_size", 64, "The size of training batches [64]")
 flags.DEFINE_string("image_shape", "(3,64,64)", "Shape of inputs images [(3,64,64)]")
 flags.DEFINE_string("exp_name", None, "The name of experiment [None]")
-flags.DEFINE_string("arch", "high_cap", "The desired arch: low_cap, high_cap, resnet. [low_cap]")
+flags.DEFINE_string("arch", "resnet", "The desired arch: low_cap, high_cap, resnet. [resnet]")
 flags.DEFINE_string("output_dir", "./", "Output directory for checkpoints, samples, etc. [.]")
 flags.DEFINE_string("data_dir", None, "Data directory [None]")
 flags.DEFINE_string("file_ext", ".jpeg", "Image filename extension [.jpeg]")
-flags.DEFINE_boolean("gaps", False, "Create gaps in data to faciliate zero-shot inference [False]")
+flags.DEFINE_boolean("gaps", True, "Create gaps in data to faciliate zero-shot inference [False]")
 flags.DEFINE_boolean("train", True, "Train [True]")
 flags.DEFINE_boolean("save_codes", False, "Save latent representation or code for all data samples [False]")
 flags.DEFINE_boolean("visualize_reconstruct", True, "True for visualizing, False for nothing [False]")
@@ -77,7 +77,7 @@ def main(_):
         FLAGS.ckpt_interval = int(FLAGS.ckpt_interval * n_iters_per_epoch)
         n_iters = int(FLAGS.epochs * n_iters_per_epoch)
         
-        vae.train(n_iters, FLAGS.stats_interval, FLAGS.ckpt_interval)
+        vae.train(n_iters, n_iters_per_epoch, FLAGS.stats_interval, FLAGS.ckpt_interval)
 
     if FLAGS.save_codes:
         b_size = 500 #large batch, forward prop only

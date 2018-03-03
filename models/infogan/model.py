@@ -13,8 +13,9 @@ TINY = 1e-8
 SEED = 123
 
 class RegularisedGAN(object):
-    def __init__(self, session, output_dist, z_dist, c_dist, arch, batch_size, image_shape, exp_name, dirs, 
-                 mi_coeff, gp_coeff, mode, critic_iters, gaps, vis_reconst, vis_disent, n_disentangle_samples):
+    def __init__(self, session, output_dist, z_dist, c_dist, arch, batch_size, 
+                 image_shape, exp_name, dirs, mi_coeff, gp_coeff, mode, 
+                 critic_iters, gaps, vis_reconst, vis_disent, n_disentangle_samples):
         """
         :type output_dist: Distribution
         :type z_dist: Distribution
@@ -48,7 +49,7 @@ class RegularisedGAN(object):
         self.is_training = tf.placeholder(tf.bool)
         self.x = tf.placeholder(tf.int32, shape=[None] + list(self.image_shape))
         
-        # Normalize + reshape 'real' input data (-> data_provider)
+        # Normalize + reshape 'real' input data
         real_x = 2*((tf.cast(self.x, tf.float32)/255.)-.5)
         real_x = tf.reshape(real_x, [-1, self.output_dist.dim])
         
@@ -57,35 +58,38 @@ class RegularisedGAN(object):
         self.c = tf.placeholder_with_default(self.c_dist.sample_prior(self.batch_size), [None, self.c_dist.dim])
         self.z_c = tf.concat([self.z,self.c], axis=1)
         
-        # Choose Gen and Disc/Q arch
+        # Set Gen and Disc/Q arch
         self.Discriminator_Q, self.Generator = NetsRetreiver(self.arch)
         
         # Generate 'fake' data
-        x_out_logit = self.Generator('Generator', self.z_c, self.image_shape[0], self.is_training, self.mode)
-        if isinstance(self.output_dist, Gaussian):
-            self.fake_x = tf.tanh(x_out_logit)
-        elif isinstance(self.output_dist, Bernoulli):
-            self.fake_x = tf.nn.sigmoid(x_out_logit)
-        else:
-            raise Exception()
+        self.fake_x = self.__G(self.z_c)
         
-        # Discriminate (D) real data
-        output_D_Q = self.Discriminator_Q('Discriminator', real_x, self.image_shape[0], 
-                              self.c_dist.dist_flat_dim + 1, self.is_training, self.mode)
-        disc_real = output_D_Q[:, :1] # D_output dim=1
-        q_c_given_x_params = output_D_Q[:, 1:] # Q_output, params of Q(c|x)
-        self.q_c_given_x_real_dist_info = self.c_dist.activate_dist(q_c_given_x_params)
-        
-        # Discriminate (D) fake/generated data and 'encode' to posterior params (Q(c|x))
-        output_D_Q = self.Discriminator_Q('Discriminator', self.fake_x, self.image_shape[0], 
-                              self.c_dist.dist_flat_dim + 1, self.is_training, self.mode)
-        disc_fake = output_D_Q[:, :1] # D_output dim=1
-        q_c_given_x_params = output_D_Q[:, 1:] # Q_output, params of Q(c|x)
-        q_c_given_x_fake_dist_info = self.c_dist.activate_dist(q_c_given_x_params) 
+        # Discriminate real data and 'encode' to posterior Q(c|x)
+        disc_real, self.q_c_given_x_real_dist_info = self.__D_Q(real_x)
+
+        # Discriminate fake data and 'encode' to posterior Q(c|x)
+        disc_fake, q_c_given_x_fake_dist_info = self.__D_Q(self.fake_x)
         
         # Loss and optimizer
         self.__prep_loss_optimizer(real_x, disc_real, disc_fake, q_c_given_x_fake_dist_info)   
                           
+    def __G(self, z_c):
+        x_out_logit = self.Generator('Generator', z_c, self.image_shape[0], self.is_training, self.mode)
+        if isinstance(self.output_dist, Gaussian):
+            x_fake = tf.tanh(x_out_logit)
+        elif isinstance(self.output_dist, Bernoulli):
+            x_fake = tf.nn.sigmoid(x_out_logit)
+        else:
+            raise Exception()
+        return x_fake
+
+    def __D_Q(self, x):
+        output_D_Q = self.Discriminator_Q('Discriminator', x, self.image_shape[0], 
+                                          self.c_dist.dist_flat_dim + 1, self.is_training, self.mode)
+        d_out = output_D_Q[:, :1] # D_output, dim=1
+        q_out = output_D_Q[:, 1:] # Q_output, params of Q(c|x)
+        return d_out, self.c_dist.activate_dist(q_out)
+
     def __prep_loss_optimizer(self, real_x, disc_real, disc_fake, q_c_given_x_dist_info):       
         # Gen / disc costs
         if self.mode == 'wgan-gp':
@@ -99,9 +103,7 @@ class RegularisedGAN(object):
             )
             differences = self.fake_x - real_x
             interpolates = real_x + (alpha*differences)
-            d_hat_ = self.Discriminator_Q('Discriminator', interpolates, self.image_shape[0],
-                                          self.c_dist.dist_flat_dim + 1, self.is_training, self.mode)
-            d_hat = d_hat_[:, :1]
+            d_hat, _ = self.__D_Q(interpolates)
             gradients = tf.gradients(d_hat, [interpolates])[0]
             slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
             gradient_penalty = tf.reduce_mean((slopes-1.)**2)
@@ -119,15 +121,10 @@ class RegularisedGAN(object):
         log_q_c = self.c_dist.logli_prior(self.c)
         cross_entropy = tf.reduce_mean(-log_q_c_given_x)
         entropy = tf.reduce_mean(-log_q_c)
-        self.mi_est = entropy - cross_entropy
-        #self.mi_est = -tf.reduce_mean(self.c_dist.kl(self.c_dist.prior_dist_info(tf.shape(self.c)[0]), 
-        #                              q_c_given_x_dist_info)) #kl_prior_post
-        #self.mi_est = -tf.reduce_mean(self.c_dist.kl(q_c_given_x_dist_info, #kl_post_prior
-        #                              self.c_dist.prior_dist_info(tf.shape(self.c)[0])))
-        
+        self.mi_est = entropy - cross_entropy        
         self.disc_cost -= self.mi_coeff * self.mi_est
         self.gen_cost -= self.mi_coeff * self.mi_est
-        
+
         # Log vars
         self.log_vars.append(("Discriminator loss", self.disc_cost))
         self.log_vars.append(("Generator loss", self.gen_cost))
@@ -145,6 +142,13 @@ class RegularisedGAN(object):
                                               var_list=params_with_name('Generator'))
             self.disc_opt = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(self.disc_cost,
                                                var_list=params_with_name('Discriminator.')) 
+    
+    def __get_code(self, dist_info):
+        if isinstance(self.c_dist, Gaussian):
+            return dist_info["mean"]
+        else:
+            raise NotImplementedError
+
     def load(self):
         self.saver = tf.train.Saver()
         ckpt = tf.train.get_checkpoint_state(self.dirs['ckpt'])
@@ -165,15 +169,10 @@ class RegularisedGAN(object):
         """Encode data, i.e. map it into latent space."""
         [c_dist_info] = self.session.run([self.q_c_given_x_real_dist_info],
                                        feed_dict={self.x: X, self.is_training: is_training})
-        if isinstance(self.c_dist, Gaussian):
-            code = c_dist_info["mean"]
-        else:
-            raise NotImplementedError
-
-        return code
+        return self.__get_code(c_dist_info)
     
     def reconstruct(self, X, z=None, is_training=False):
-        """ Reconstruct data. """
+        """Reconstruct data."""
         code = self.encode(X)
         if z is None:
             return self.generate(c=code)
@@ -181,7 +180,7 @@ class RegularisedGAN(object):
         return self.generate(z_c=z_c)
     
     def generate(self, z_c=None, c=None, batch_size=None, is_training=False):
-        """ Generate data from latent representation (z,c) or c only."""
+        """Generate data from latent representation (z,c) or c only."""
         if c is None:
             if z_c is None:
                 batch_size = self.batch_size if batch_size is None else batch_size
@@ -192,10 +191,10 @@ class RegularisedGAN(object):
         return self.session.run(self.fake_x, 
                                 feed_dict={self.z_c: z_c, self.is_training: is_training})
     
-    def train(self, n_iters, stats_iters, ckpt_interval):
+    def train(self, n_iters, n_iters_per_epoch, stats_iters, ckpt_interval):
         self.session.run(tf.global_variables_initializer())
         
-        # Fixed GT samples - save
+        # Fixed GT samples
         fixed_x, _ = next(self.train_iter)
         fixed_x = self.session.run(tf.constant(fixed_x))
         save_images(fixed_x, os.path.join(self.dirs['samples'], 'samples_groundtruth.png'))
@@ -213,8 +212,8 @@ class RegularisedGAN(object):
             start_time = time.time()
            
             # Train generator
-            if iteration > 1:
-                _ = self.session.run(self.gen_opt, feed_dict={self.is_training:True})
+            if iteration > start_iter:
+                _ = self.session.run(self.gen_opt, feed_dict={self.x: _data, self.is_training:True})
 
             # Train critic
             if self.mode == 'wgan-gp':
@@ -229,6 +228,9 @@ class RegularisedGAN(object):
                                             feed_dict={self.x: _data, self.is_training:True})[1:]         
             
             running_log_vals = [running + batch for running, batch in zip(running_log_vals, log_vals)]
+            
+            if iteration % n_iters_per_epoch == 1:
+                print("Epoch: {0}".format(iteration // n_iters_per_epoch))
             
             # Print avg stats and dev set stats
             if (iteration < start_iter + 4) or iteration % stats_iters == 0:
@@ -298,7 +300,7 @@ class RegularisedGAN(object):
         else:
             raise NotImplementedError
 
-        rimgs = np.vstack(rimgs).reshape([-1] + self.image_shape)
-        rimgs = ((rimgs+1.)*(255.99/2)).astype('int32')
+        rimgs = np.vstack(rimgs).reshape([n_cs, self.n_disentangle_samples, -1])
+        rimgs = ((rimgs+1.)*(255.99/2)).astype('int32').reshape([-1] + self.image_shape)
         save_images(rimgs, os.path.join(self.dirs['samples'], 'disentanglement.png'),
                     n_rows=n_cs, n_cols=self.n_disentangle_samples)

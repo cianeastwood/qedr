@@ -38,30 +38,43 @@ class VAE(object):
     def __build_graph(self):
         tf.set_random_seed(SEED)
         np.random.seed(SEED)
-        
         self.is_training = tf.placeholder(tf.bool)
         self.x = tf.placeholder(tf.int32, shape=[None] + list(self.image_shape))
         
-        self.Encoder, self.Decoder = NetsRetreiver(self.arch)        
-        norm_x = 2*((tf.cast(self.x, tf.float32)/255.)-.5) # (-> data_provider)
+        # Normalize + reshape 'real' input data
+        norm_x = 2*((tf.cast(self.x, tf.float32)/255.)-.5)
         
-        z_dist_params = self.Encoder('Encoder', norm_x, self.image_shape[0], self.z_dist.dist_flat_dim,
+        # Set Encoder and Decoder archs
+        self.Encoder, self.Decoder = NetsRetreiver(self.arch)        
+        
+        # Encode
+        self.z_dist_info, self.z = self.__Enc(norm_x)
+        
+        # Decode
+        self.x_out, x_out_logit = self.__Dec(self.z)
+        
+        # Loss and optimizer
+        self.__prep_loss_optimizer(norm_x, x_out_logit)   
+    
+    def __Enc(self, x):
+        z_dist_params = self.Encoder('Encoder', x, self.image_shape[0], self.z_dist.dist_flat_dim,
                                           self.is_training)
-        self.z_dist_info = self.z_dist.activate_dist(z_dist_params)
+        z_dist_info = self.z_dist.activate_dist(z_dist_params)
         if isinstance(self.z_dist, Gaussian):
-            self.z = self.z_dist.sample(self.z_dist_info)
+            z = self.z_dist.sample(z_dist_info)
         else:
             raise NotImplementedError #reparam trick for other latent dists
-        
-        x_out_logit = self.Decoder('Decoder', self.z, self.image_shape[0], self.is_training)
+        return z_dist_info, z
+    
+    def __Dec(self, z):
+        x_out_logit = self.Decoder('Decoder', z, self.image_shape[0], self.is_training)
         if isinstance(self.output_dist, Gaussian):
-            self.x_out = tf.tanh(x_out_logit)
+            x_out = tf.tanh(x_out_logit)
         elif isinstance(self.output_dist, Bernoulli):
-            self.x_out = tf.nn.sigmoid(x_out_logit)
+            x_out = tf.nn.sigmoid(x_out_logit)
         else:
             raise Exception()
-        
-        self.__prep_loss_optimizer(norm_x, x_out_logit)   
+        return x_out, x_out_logit
     
     def __prep_loss_optimizer(self, norm_x, x_out_logit):
         norm_x = tf.reshape(norm_x, [-1, self.output_dist.dim])
@@ -99,7 +112,7 @@ class VAE(object):
         sys.stdout.flush()
         return prev_step + 1
     
-    def train(self, n_iters, stats_iters, ckpt_interval):     
+    def train(self, n_iters, n_iters_per_epoch, stats_iters, ckpt_interval):     
         self.session.run(tf.global_variables_initializer())
         
         # Fixed GT samples - save
@@ -116,6 +129,9 @@ class VAE(object):
             _data, _ = next(self.train_iter)
             _, cost = self.session.run((self.optimizer, self.loss), feed_dict={self.x: _data, self.is_training:True})
             running_cost += cost
+            
+            if iteration % n_iters_per_epoch == 1:
+                print("Epoch: {0}".format(iteration // n_iters_per_epoch))
             
             # Print avg stats and dev set stats
             if (iteration < start_iter + 4) or iteration % stats_iters == 0:
@@ -136,7 +152,6 @@ class VAE(object):
                        z_str = "z{0}={1:.2f}".format(i,zss)
                        zss_str += z_str + ", "
                     print("z variance:{0}".format(zss_str))
-                    #print("z variables ordered by importance:{0}".format(np.argsort(avg_dev_var)))
                 
                 if self.vis_reconst:
                     self.visualise_reconstruction(fixed_x)
@@ -195,8 +210,8 @@ class VAE(object):
                     rimgs.append(self.generate(z_mu=z_new))
         else:
             raise NotImplementedError 
-        rimgs = np.vstack(rimgs).reshape([n_zs, self.n_disentangle_samples, -1]).transpose(1,0,2)
-        rimgs = rimgs.reshape([-1] + self.image_shape)
-        rimgs = ((rimgs+1.)*(255.99/2)).astype('int32')
+        rimgs = np.vstack(rimgs).reshape([n_zs, self.n_disentangle_samples, -1]) #.transpose(1,0,2)
+        rimgs = rimgs[[5,7,2,6,1,9,3]] #order of zs captured
+        rimgs = ((rimgs+1.)*(255.99/2)).astype('int32').reshape([-1] + self.image_shape)
         save_images(rimgs, os.path.join(self.dirs['samples'], 'disentanglement.png'),
                     n_cols=n_zs, n_rows=self.n_disentangle_samples)

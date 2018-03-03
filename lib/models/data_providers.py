@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Data providers.
+"""
+Based on https://github.com/CSTR-Edinburgh/mlpractical/blob/mlp2017-8/master/mlp/data_providers.py.
+
+Data providers.
 
 This module provides classes for loading datasets and iterating over batches of
 data points.

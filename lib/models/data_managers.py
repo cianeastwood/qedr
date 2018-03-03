@@ -80,8 +80,7 @@ class DataManager(object):
         train_gts, dev_gts, test_gts = gts
         self.train = self._data_provider(self.img_dir, train_img_ids, train_gts, 
                                         self.batch_size, self.image_shape,
-                                        self.file_ext, self.inf, self.shuffle, 
-                                        print_epoch=True)
+                                        self.file_ext, self.inf, self.shuffle)
         self.dev   = self._data_provider(self.img_dir, dev_img_ids, dev_gts, 
                                         self.batch_size, self.image_shape,
                                         self.file_ext, self.inf, self.shuffle)
@@ -93,8 +92,7 @@ class DataManager(object):
         train_imgs, dev_imgs, test_imgs = imgs
         train_gts, dev_gts, test_gts = gts               
         self.train = self._data_provider(train_imgs, train_gts, self.batch_size, 
-                                          inf=self.inf, shuffle_order=self.shuffle, 
-                                          print_epoch=True)
+                                          inf=self.inf, shuffle_order=self.shuffle)
         self.dev   = self._data_provider(dev_imgs, dev_gts, self.batch_size,
                                           inf=self.inf, shuffle_order=self.shuffle)
         self.test  = self._data_provider(test_imgs, test_gts, self.batch_size,
