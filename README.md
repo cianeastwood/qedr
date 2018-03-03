@@ -8,8 +8,8 @@ Code to reproduce the results in our ICLR 2018 paper: [A Framework for the Quant
 
 ## Data
 
-- Download [here](https://www.dropbox.com/s/dp3rrvpcp2jihxz/edinburgh_teapots.tar.gz?dl=0).
-  - If RAM < 9gb, convert .npz to .jpeg and load batches of images into memory (not entire dataset)
+- Download [here](https://www.dropbox.com/s/woeyomxuylqu7tx/edinburgh_teapots.zip?dl=0).
+  - If RAM < 10GB, convert .npz to .jpeg before training to load batches of images into memory (rather than entire dataset)
     - `python npz_to_jpeg.py` (after editing paths)
 - Generated using [this](https://github.com/polmorenoc/inversegraphics) renderer.
 
