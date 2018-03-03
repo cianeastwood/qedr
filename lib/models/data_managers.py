@@ -3,8 +3,7 @@ import sys
 import scipy.misc
 import time
 import os
-from lib.models.data_providers import FlexibleDataProvider, FlexibleImageDataProvider
-from lib.models.data_providers import TeapotsDataProvider
+from lib.models.data_providers import TeapotsDataProvider, FlexibleImageDataProvider
 from lib.zero_shot import get_gap_ids
 
 class DataManager(object):
@@ -25,7 +24,7 @@ class DataManager(object):
         self.supervised = supervised
         
         if self.file_ext == '.npz':
-            self._data_provider = FlexibleDataProvider
+            self._data_provider = TeapotsDataProvider
             self.__create_data_provider = self.__create_data_provider_npz
             imgs = np.load(os.path.join(self.data_dir, self.dataset_name + ".npz"))['images']
             self.n_samples = len(imgs)
