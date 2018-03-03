@@ -1,6 +1,6 @@
 ## Quantitative Evaluation of Disentangled Representations
 
-Implementation of our [NIPS 2017 workshop](https://sites.google.com/view/disentanglenips2017) paper: [A Framework for the Quantitative Evaluation of Disentangled Representations](https://drive.google.com/file/d/0Bwy4Nlx78QCCbnpMdGNvYmNnU2VoMzVfdkdFaHhaT3B0Rmdr/view).
+Code to reproduce the results in our ICLR 2018 paper: [A Framework for the Quantitative Evaluation of Disentangled Representations](https://openreview.net/forum?id=By-7dz-AZ).
 
 ## Prerequisites
 
@@ -8,18 +8,24 @@ Implementation of our [NIPS 2017 workshop](https://sites.google.com/view/disenta
 
 ## Data
 
-- Download link coming soon!
+- Download [here](https://www.dropbox.com/s/dp3rrvpcp2jihxz/edinburgh_teapots.tar.gz?dl=0).
+  - If RAM < 9gb, convert .npz to .jpeg and load batches of images into memory (not entire dataset)
+    - `python npz_to_jpeg.py` (after editing paths)
 - Generated using [this](https://github.com/polmorenoc/inversegraphics) renderer.
 
 ## Models
 
 - PCA
 - [InfoGAN](https://papers.nips.cc/paper/6399-infogan-interpretable-representation-learning-by-information-maximizing-generative-adversarial-nets.pdf)
-- [\beta-VAE](https://openreview.net/pdf?id=Sy2fzU9gl) (results coming soon...)
+- [VAE](https://arxiv.org/pdf/1312.6114.pdf) / [\beta-VAE](https://openreview.net/pdf?id=Sy2fzU9gl)
 
-### Usage
+#### Train
 
 - `PYTHONPATH=[/path/to/qedr/] python main.py`
+
+#### Save codes
+
+- `PYTHONPATH=[/path/to/qedr/] python main.py --save_codes`
 
 ## Quantitative Evaluation
 
