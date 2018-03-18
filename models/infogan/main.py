@@ -1,10 +1,12 @@
-import os
+import os, sys
 import numpy as np
 import tensorflow as tf
 from operator import mul
 from functools import reduce
-
 from model import RegularisedGAN
+
+sys.path.append("..")
+sys.path.append("../..")
 from lib.models.distributions import Uniform, Gaussian
 from lib.utils import init_directories, create_directories
 from lib.models.data_managers import TeapotsDataManager
@@ -34,7 +36,7 @@ flags.DEFINE_boolean("visualize_reconstruct", False, "True for visualizing, Fals
 flags.DEFINE_boolean("visualize_disentangle", True, "True for visualizing, False for nothing [True]")
 flags.DEFINE_integer("n_disentangle_samples", 10, "The number of evenly spaced samples in latent space \
                      over the interval [-1, 1] [64]")
-FLAGS = flags.FLAGS                    
+FLAGS = flags.FLAGS
 
 def main(_):
     if FLAGS.exp_name is None:
@@ -46,15 +48,15 @@ def main(_):
     dirs['data'] = '../../data' if FLAGS.data_dir is None else FLAGS.data_dir
     dirs['codes'] = os.path.join(dirs['data'], 'codes/')
     create_directories(dirs, FLAGS.train, FLAGS.save_codes)
-    
+
     z_dist = Uniform(FLAGS.noise_variables)
     c_dist = Uniform(FLAGS.latent_codes, fix_std=FLAGS.fix_std)
     output_dim  = reduce(mul, image_shape, 1)
     output_dist = Gaussian(output_dim)
-    
+
     if FLAGS.mode != 'wgan-gp' and FLAGS.arch != 'dcgan':
         print("Warning: Using \'vanilla\' GAN objective without DCGAN architecture may be unstable.")
-    
+
     run_config = tf.ConfigProto(allow_soft_placement=True)
     run_config.gpu_options.allow_growth=True
     run_config.gpu_options.per_process_gpu_memory_fraction=0.9
@@ -81,41 +83,41 @@ def main(_):
     )
 
     if FLAGS.train:
-        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size, 
-                              image_shape, shuffle=True, gaps=FLAGS.gaps, 
-                              file_ext=FLAGS.file_ext, train_fract=0.8, 
+        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size,
+                              image_shape, shuffle=True, gaps=FLAGS.gaps,
+                              file_ext=FLAGS.file_ext, train_fract=0.8,
                               inf=True)
         gan.train_iter, gan.dev_iter, gan.test_iter = data_manager.get_iterators()
-        
+
         n_iters_per_epoch = data_manager.n_train // data_manager.batch_size
         if FLAGS.mode == 'wgan-gp':
             n_iters_per_epoch //= FLAGS.critic_iters
-        
+
         FLAGS.stats_interval = int(FLAGS.stats_interval * n_iters_per_epoch)
         FLAGS.ckpt_interval = int(FLAGS.ckpt_interval * n_iters_per_epoch)
         n_iters = int(FLAGS.epochs * n_iters_per_epoch)
-        
+
         gan.train(n_iters, n_iters_per_epoch, FLAGS.stats_interval, FLAGS.ckpt_interval)
 
     if FLAGS.save_codes:
         b_size = 500 #large batch, forward prop only
         data_manager = TeapotsDataManager(dirs['data'], b_size, image_shape, shuffle=False, gaps=False,
                                           file_ext=FLAGS.file_ext, train_fract=1., inf=False)
-        data_manager.set_divisor_batch_size()        
+        data_manager.set_divisor_batch_size()
         gan.train_iter, gan.dev_iter, gan.test_iter = data_manager.get_iterators()
-        
+
         gan.session.run(tf.global_variables_initializer())
         saved_step = gan.load()
         assert saved_step > 1, "A trained model is needed to encode the data!"
-        
+
         codes = []
         for batch_num, (img_batch, _) in enumerate(gan.train_iter):
             code = gan.encode(img_batch) #[batch_size, reg_latent_dim]
             codes.append(code)
             if batch_num < 5 or batch_num % 100 == 0:
                 print(("Batch number {0}".format(batch_num)))
-        
-        codes = np.vstack(codes)         
+
+        codes = np.vstack(codes)
         filename = os.path.join(dirs['codes'], "codes_new_" + FLAGS.exp_name)
         np.save(filename, codes)
         print(("Codes saved to: {0}".format(filename)))
