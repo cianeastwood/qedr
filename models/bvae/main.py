@@ -1,4 +1,4 @@
-import os
+import os, sys
 import numpy as np
 import tensorflow as tf
 from operator import mul
