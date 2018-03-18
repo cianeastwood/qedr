@@ -2,6 +2,8 @@ import numpy as np
 import os, sys
 from operator import mul
 from sklearn.decomposition import PCA
+sys.path.append("..")
+sys.path.append("../..")
 from lib.eval.regression import normalize
 
 if __name__ == '__main__':

@@ -5,6 +5,8 @@ from operator import mul
 from functools import reduce
 
 from model import VAE
+sys.path.append("..")
+sys.path.append("../..")
 from lib.models.distributions import Gaussian
 from lib.utils import init_directories, create_directories
 from lib.models.data_managers import TeapotsDataManager
@@ -39,11 +41,11 @@ def main(_):
     dirs['data'] = '../../data' if FLAGS.data_dir is None else FLAGS.data_dir
     dirs['codes'] = os.path.join(dirs['data'], 'codes/')
     create_directories(dirs, FLAGS.train, FLAGS.save_codes)
-    
+
     z_dist = Gaussian(FLAGS.latent_dim)
     output_dim  = reduce(mul, image_shape, 1)
     output_dist = Gaussian(output_dim)
-    
+
     run_config = tf.ConfigProto(allow_soft_placement=True)
     run_config.gpu_options.allow_growth=True
     run_config.gpu_options.per_process_gpu_memory_fraction=0.9
@@ -66,38 +68,38 @@ def main(_):
     )
 
     if FLAGS.train:
-        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size, 
-                              image_shape, shuffle=True, gaps=FLAGS.gaps, 
-                              file_ext=FLAGS.file_ext, train_fract=0.8, 
+        data_manager = TeapotsDataManager(dirs['data'], FLAGS.batch_size,
+                              image_shape, shuffle=True, gaps=FLAGS.gaps,
+                              file_ext=FLAGS.file_ext, train_fract=0.8,
                               inf=True)
         vae.train_iter, vae.dev_iter, vae.test_iter = data_manager.get_iterators()
-        
+
         n_iters_per_epoch = data_manager.n_train // data_manager.batch_size
         FLAGS.stats_interval = int(FLAGS.stats_interval * n_iters_per_epoch)
         FLAGS.ckpt_interval = int(FLAGS.ckpt_interval * n_iters_per_epoch)
         n_iters = int(FLAGS.epochs * n_iters_per_epoch)
-        
+
         vae.train(n_iters, n_iters_per_epoch, FLAGS.stats_interval, FLAGS.ckpt_interval)
 
     if FLAGS.save_codes:
         b_size = 500 #large batch, forward prop only
         data_manager = TeapotsDataManager(dirs['data'], b_size, image_shape, shuffle=False, gaps=False,
                                           file_ext=FLAGS.file_ext, train_fract=1., inf=False)
-        data_manager.set_divisor_batch_size()        
+        data_manager.set_divisor_batch_size()
         vae.train_iter, vae.dev_iter, vae.test_iter = data_manager.get_iterators()
-        
+
         vae.session.run(tf.global_variables_initializer())
         saved_step = vae.load()
         assert saved_step > 1, "A trained model is needed to encode the data!"
-        
+
         codes = []
         for batch_num, (img_batch, _) in enumerate(vae.train_iter):
             code = vae.encode(img_batch) #[batch_size, reg_latent_dim]
             codes.append(code)
             if batch_num < 5 or batch_num % 100 == 0:
                 print(("Batch number {0}".format(batch_num)))
-        
-        codes = np.vstack(codes)         
+
+        codes = np.vstack(codes)
         filename = os.path.join(dirs['codes'], "codes_" + FLAGS.exp_name)
         np.save(filename, codes)
         print(("Codes saved to: {0}".format(filename)))
